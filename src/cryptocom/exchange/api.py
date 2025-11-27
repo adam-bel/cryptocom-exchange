@@ -13,6 +13,9 @@ import aiolimiter
 import async_timeout
 import httpx
 import websockets
+import logging
+
+logging.getLogger('websockets').setLevel(logging.ERROR)
 
 RATE_LIMITS = {
     # order methods
@@ -59,10 +62,11 @@ def params_to_str(obj, level):
 class ApiListenAsyncIterable:
     """Listen websocket iterator."""
 
-    def __init__(self, api, ws, channels, sign):
+    def __init__(self, api, ws, channels, sign, secondary_dict=None):
         self.api = api
         self.ws = ws
         self.channels = channels
+        self.secondary_dict = secondary_dict
 
         self.sign = sign
         self.sub_data_sent = False
@@ -77,13 +81,19 @@ class ApiListenAsyncIterable:
                 "id": random.randint(0, 2**63 - 1),
                 "method": "subscribe",
                 "params": {"channels": self.channels},
-                "nonce": int(time.time()),
+                "nonce": int(time.time() * 1000),
             }
+            if self.secondary_dict:
+                for key in self.secondary_dict.keys():
+                    sub_data["params"][key] = self.secondary_dict[key]
 
         # [0] sign auth request to listen private methods
         if not self.auth_sent and self.sign:
+           # from loguru import logger
+            #logger.warning(f"auth_sent={self.auth_sent}")
             await self.ws.send(json.dumps(self.api.sign("public/auth", {})))
             self.auth_sent = True
+            #logger.warning(f"auth_sent={self.auth_sent}")
 
         # [0] if not sign start connection with subscription
         if not self.sign and not self.sub_data_sent:
@@ -95,6 +105,8 @@ class ApiListenAsyncIterable:
             tm.shift(60)
 
         if data:
+            #from loguru import logger
+            #logger.warning(data)
             data = json.loads(data)
             result = data.get("result")
 
@@ -108,6 +120,7 @@ class ApiListenAsyncIterable:
                         }
                     )
                 )
+                #logger.warning(f"HEARTBEAT sent: {self.channels}")
             # [3] consume data
             elif self.sub_data_sent and result:
                 if result["subscription"] not in self.channels:
@@ -121,8 +134,14 @@ class ApiListenAsyncIterable:
             if data["method"] == "public/auth" and data["code"] == 0:
                 await self.ws.send(json.dumps(sub_data))
                 self.sub_data_sent = True
-            elif "code" not in data or data["code"] != 0:
-                raise ApiAuthError(f"{data}")
+            #elif "code" not in data or data["code"] != 0:
+                #raise ApiAuthError(f"{data}")
+            else:
+                try:
+                    if data["code"] != 0:
+                        raise ApiAuthError(f"{data}")
+                except KeyError:
+                    pass
 
 
 class ApiProvider:
@@ -221,6 +240,8 @@ class ApiProvider:
                 data = self.sign(path, original_data)
             try:
                 async with limiter:
+                    #from loguru import logger
+                    #logger.warning(data)
                     resp = await client.request(
                         method,
                         urljoin(self.root_url, path),
@@ -229,6 +250,7 @@ class ApiProvider:
                         headers={"content-type": "application/json"},
                     )
                     resp_json = resp.json()
+                    #logger.warning(resp_json)
                     count += 1
                     if resp.status_code in [401, 400]:
                         raise ApiAuthError(resp_json)
@@ -278,15 +300,20 @@ class ApiProvider:
     async def post(self, path, data=None, sign=True):
         return await self.request("post", path, data=data, sign=sign)
 
-    async def listen(self, url, *channels, sign=False):
+    async def listen(self, url, *channels, sign=False, secondary_dict=None):
         url = urljoin(self.ws_root_url, url)
-        async for ws in websockets.connect(url, open_timeout=self.timeout):
+        from loguru import logger
+        async for ws in websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=10, open_timeout=self.timeout):
             try:
-                dataiterator = ApiListenAsyncIterable(self, ws, channels, sign)
+                dataiterator = ApiListenAsyncIterable(self, ws, channels, sign, secondary_dict)
                 async for data in dataiterator:
                     if data:
                         yield data
-            except (websockets.ConnectionClosed, asyncio.TimeoutError):
+            except asyncio.TimeoutError as e:
+                logger.warning(f"error={e}, channel={channels}")
+                continue
+            except websockets.ConnectionClosed as e:
+                logger.warning(f"error={e}, channel={channels}")
                 continue
 
 

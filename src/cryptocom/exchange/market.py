@@ -31,18 +31,20 @@ class Exchange:
             **{pair.name: pair for pair in (await self.get_pairs())}
         )
 
-    async def get_pairs(self) -> List[Pair]:
+    async def get_pairs(self, pair: str) -> List[Pair]:
         """List all available market pairs and store to provide pairs info."""
         data = await self.api.get("public/get-instruments")
-        return [
-            Pair(
-                i["symbol"],
-                price_precision=i["quote_decimals"],
-                quantity_precision=i["quantity_decimals"],
-            )
-            for i in data
-            if "-" not in i["symbol"] and "@" not in i["symbol"]
-        ]
+        for i in data:
+            if i["symbol"] == pair:
+                return i
+        raise ValueError(f"Pair not found {pair}")
+        #return [
+            #Pair(
+                #i["symbol"],
+                #price_precision=i["quote_decimals"],
+                #quantity_precision=i["quantity_decimals"],
+            #)
+        #]
 
     async def get_orderbook(self, pair: Pair, depth: int = 150) -> OrderBook:
         """Get the order book for a particular market."""
@@ -130,12 +132,13 @@ class Exchange:
         )
         return [MarketTrade.from_api(pair, trade) for trade in reversed(data)]
 
-    async def get_ticker(self, pair: Pair) -> MarketTicker:
+    async def get_ticker(self, pair: str) -> MarketTicker:
         """Get ticker in for provided pair."""
         data = await self.api.get(
-            "public/get-tickers", {"instrument_name": pair.exchange_name}
+            "public/get-tickers", {"instrument_name": pair}
         )
-        return MarketTicker.from_api(pair, data[0])
+        return data[0]
+        #return MarketTicker.from_api(pair, data[0])
 
     async def get_tickers(self) -> Dict[Pair, MarketTicker]:
         """Get tickers in all available markets."""
@@ -148,9 +151,9 @@ class Exchange:
             if ticker["i"] in self.pairs
         }
 
-    async def get_price(self, pair: Pair) -> float:
+    async def get_price(self, pair: str) -> float:
         """Get latest price of pair."""
-        return (await self.get_ticker(pair)).trade_price
+        return (await self.get_ticker(pair))["a"]
 
     async def listen_candles(
         self, timeframe: Timeframe, *pairs: List[Pair]
@@ -175,16 +178,19 @@ class Exchange:
                 pair = self.pairs[data["instrument_name"]]
                 yield MarketTrade.from_api(pair, trade)
 
-    async def listen_orderbook(self, *pairs: List[Pair]) -> OrderBook:
-        channels = [f"book.{pair.exchange_name}.50" for pair in pairs]
+    async def listen_orderbook(self, *pairs: List[str]) -> OrderBook:
+        channels = [f"book.{pair}.10" for pair in pairs]
+        #secondary_dict = {"book_update_frequency": 500, "book_subscription_type": "SNAPSHOT"}
         async for data in self.api.listen("market", *channels):
-            pair = self.pairs[data["instrument_name"]]
-            buys = [
-                OrderInBook.from_api(order, pair, OrderSide.BUY)
-                for order in data["data"][0]["bids"]
-            ]
-            sells = [
-                OrderInBook.from_api(order, pair, OrderSide.SELL)
-                for order in reversed(data["data"][0]["asks"])
-            ]
-            yield OrderBook(buys, sells, pair)
+            yield data
+            #print(data)
+            #pair = self.pairs[data["instrument_name"]]
+            #buys = [
+                #OrderInBook.from_api(order, pair, OrderSide.BUY)
+                #for order in data["data"][0]["bids"]
+            #]
+            #sells = [
+                #OrderInBook.from_api(order, pair, OrderSide.SELL)
+                #for order in reversed(data["data"][0]["asks"])
+            #]
+            #yield OrderBook(buys, sells, pair)
