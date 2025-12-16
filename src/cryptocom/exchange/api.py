@@ -302,18 +302,18 @@ class ApiProvider:
 
     async def listen(self, url, *channels, sign=False, secondary_dict=None):
         url = urljoin(self.ws_root_url, url)
-        from loguru import logger
+        #from loguru import logger
         async for ws in websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=10, open_timeout=self.timeout):
             try:
                 dataiterator = ApiListenAsyncIterable(self, ws, channels, sign, secondary_dict)
                 async for data in dataiterator:
                     if data:
                         yield data
-            except asyncio.TimeoutError as e:
-                logger.warning(f"error={e}, channel={channels}")
+            except (asyncio.TimeoutError, asyncio.exceptions.CancelledError) as e:
+                #logger.warning(f"error={e}, channel={channels}")
                 continue
             except websockets.ConnectionClosed as e:
-                logger.warning(f"error={e}, channel={channels}")
+                #logger.warning(f"error={e}, channel={channels}")
                 continue
 
 
