@@ -256,6 +256,8 @@ class ApiProvider:
                         raise ApiAuthError(resp_json)
                     elif resp.status_code != 200:
                         if count != self.retries:
+                            from loguru import logger
+                            logger.warning(f"{resp_json}, params: {data}")
                             continue
                         raise ApiError(
                             f"Error: {resp_json}. "
