@@ -427,9 +427,7 @@ class Account:
             yield Balance.from_api(data)
 
     async def listen_orders(self, pair: str) -> Order:
-        async for data in self.api.listen(
-            "user", f"user.order.{pair}", sign=True
-        ):
+        async for data in self.api.listen("user", f"user.order.{pair}", sign=True):
             yield data
             #for order in data.get("data", []):
                 #yield Order.create_from_api(
