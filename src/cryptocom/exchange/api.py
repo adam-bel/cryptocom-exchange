@@ -16,7 +16,7 @@ import websockets
 import logging
 from loguru import logger as logru
 
-logging.getLogger('websockets').setLevel(logging.ERROR)
+logging.getLogger('websockets').setLevel(logging.CRITICAL)
 
 RATE_LIMITS = {
     # order methods
