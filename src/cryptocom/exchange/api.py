@@ -249,18 +249,12 @@ class ApiProvider:
                     if resp.status_code in [401, 400]:
                         raise ApiAuthError(resp_json)
                     elif resp.status_code != 200:
-                        if resp_json.msg == "BAD_REQUEST":
-                            raise RequestError(
-                                f"Error: {resp_json}. "
-                                f"Status: {resp.status_code}. Json params: {data}"
-                            )
+                        if resp.status_code == 404 and resp_json.msg == "BAD_REQUEST":
+                            raise RequestError(f"Status: {resp.status_code}\nError: {resp_json}\nJson params: {data}")
                         elif count != self.retries:
                             logru.warning(f"{resp_json}, params: {data}")
                             continue
-                        raise ApiError(
-                            f"Error: {resp_json}. "
-                            f"Status: {resp.status_code}. Json params: {data}"
-                        )
+                        raise ApiError(f"Status: {resp.status_code}\nError: {resp_json}\nJson params: {data}")
             except (
                 asyncio.TimeoutError,
                 httpx.HTTPError,
