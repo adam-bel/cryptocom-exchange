@@ -36,6 +36,10 @@ class ApiError(Exception):
     pass
 
 
+class RequestError(Exception):
+    pass
+
+
 class ApiAuthError(ApiError):
     pass
 
@@ -245,7 +249,12 @@ class ApiProvider:
                     if resp.status_code in [401, 400]:
                         raise ApiAuthError(resp_json)
                     elif resp.status_code != 200:
-                        if count != self.retries:
+                        if resp_json.msg == "BAD_REQUEST":
+                            raise RequestError(
+                                f"Error: {resp_json}. "
+                                f"Status: {resp.status_code}. Json params: {data}"
+                            )
+                        elif count != self.retries:
                             logru.warning(f"{resp_json}, params: {data}")
                             continue
                         raise ApiError(
